@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from "react";
 
 export interface User {
   email: string;
@@ -15,26 +15,12 @@ export interface Signup {
   timestamp: string;
 }
 
-const SCRIPT_URL_KEY = 'potluck_script_url';
-
-// Default Google Apps Script Web App URL (can be overridden by setting localStorage `potluck_script_url`,
-// or via Vite env var `VITE_GOOGLE_APPS_SCRIPT_URL`).
-const DEFAULT_SCRIPT_URL =
-  (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_GOOGLE_APPS_SCRIPT_URL ||
-  'https://script.google.com/macros/s/AKfycbxErMSS_4DluXlMN8qqH-7wgS56KAnLtBMbfgRHxste2O1XGIhfD-r2UqYnws5UFyMe/exec';
+// Backend base: in dev, Vite proxies `/api/*` to http://localhost:3001 (see vite.config.ts).
+const API_BASE = "";
 
 export function useGoogleSheets() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const getScriptUrl = useCallback(() => {
-    const overridden = localStorage.getItem(SCRIPT_URL_KEY);
-    return (overridden && overridden.trim()) ? overridden.trim() : DEFAULT_SCRIPT_URL;
-  }, []);
-
-  const setScriptUrl = useCallback((url: string) => {
-    localStorage.setItem(SCRIPT_URL_KEY, url);
-  }, []);
 
   const simpleHash = (str: string): string => {
     let hash = 0;
@@ -46,114 +32,86 @@ export function useGoogleSheets() {
     return Math.abs(hash).toString(16);
   };
 
-  const callApi = useCallback(async (params: Record<string, string>) => {
-    const scriptUrl = getScriptUrl();
-    if (!scriptUrl) {
-      throw new Error('Please configure your Google Apps Script URL first');
+  const apiFetch = useCallback(async <T,>(path: string, init?: RequestInit): Promise<T> => {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers || {}),
+      },
+    });
+
+    const text = await res.text();
+    let data: any;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error("Invalid response from server");
     }
 
-    const queryString = new URLSearchParams(params).toString();
-    // Google Apps Script often blocks browser `fetch()` due to Origin/CORS restrictions.
-    // Use JSONP (script tag injection) instead. Requires `GOOGLE_APPS_SCRIPT.js` to support `callback=...`.
-    const callbackName = `__potluck_jsonp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const src = `${scriptUrl}?${queryString}&callback=${encodeURIComponent(callbackName)}`;
-
-    return await new Promise((resolve, reject) => {
-      const w = window as unknown as Record<string, unknown>;
-      let scriptEl: HTMLScriptElement | null = null;
-
-      const cleanup = () => {
-        if (scriptEl?.parentNode) scriptEl.parentNode.removeChild(scriptEl);
-        scriptEl = null;
-        delete w[callbackName];
-      };
-
-      const timeoutId = window.setTimeout(() => {
-        cleanup();
-        reject(new Error('Request timed out'));
-      }, 15000);
-
-      w[callbackName] = (data: unknown) => {
-        window.clearTimeout(timeoutId);
-        cleanup();
-        resolve(data);
-      };
-
-      scriptEl = document.createElement('script');
-      scriptEl.async = true;
-      scriptEl.src = src;
-      scriptEl.onerror = () => {
-        window.clearTimeout(timeoutId);
-        cleanup();
-        reject(new Error('Failed to load Google Apps Script'));
-      };
-
-      document.head.appendChild(scriptEl);
-    });
-  }, [getScriptUrl]);
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.error || `Request failed (${res.status})`);
+    }
+    return data as T;
+  }, []);
 
   const register = useCallback(async (email: string, password: string, name: string): Promise<User> => {
     setLoading(true);
     setError(null);
     try {
-      const result = await callApi({
-        action: 'register',
-        email: email.toLowerCase(),
-        password_hash: simpleHash(password),
-        name,
+      const result = await apiFetch<{ success: true; user: User }>("/api/register", {
+        method: "POST",
+        body: JSON.stringify({
+          email: email.toLowerCase(),
+          password_hash: simpleHash(password),
+          name,
+        }),
       });
-      if (!result.success) {
-        throw new Error(result.error || 'Registration failed');
-      }
       return result.user;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Registration failed';
+      const message = err instanceof Error ? err.message : "Registration failed";
       setError(message);
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [callApi]);
+  }, [apiFetch]);
 
   const login = useCallback(async (email: string, password: string): Promise<User> => {
     setLoading(true);
     setError(null);
     try {
-      const result = await callApi({
-        action: 'login',
-        email: email.toLowerCase(),
-        password_hash: simpleHash(password),
+      const result = await apiFetch<{ success: true; user: User }>("/api/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: email.toLowerCase(),
+          password_hash: simpleHash(password),
+        }),
       });
-      if (!result.success) {
-        throw new Error(result.error || 'Invalid email or password');
-      }
       return result.user;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Login failed';
+      const message = err instanceof Error ? err.message : "Login failed";
       setError(message);
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [callApi]);
+  }, [apiFetch]);
 
   const getSignups = useCallback(async (): Promise<Signup[]> => {
     setLoading(true);
     setError(null);
     try {
-      const result = await callApi({ action: 'getSignups' });
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch signups');
-      }
+      const result = await apiFetch<{ success: true; signups: Signup[] }>("/api/signups");
       return result.signups;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch signups';
+      const message = err instanceof Error ? err.message : "Failed to fetch signups";
       setError(message);
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [callApi]);
+  }, [apiFetch]);
 
   const addSignup = useCallback(async (
     category: string,
@@ -166,26 +124,25 @@ export function useGoogleSheets() {
     setLoading(true);
     setError(null);
     try {
-      const result = await callApi({
-        action: 'addSignup',
-        category,
-        item,
-        slot: slot.toString(),
-        user_email: userEmail,
-        user_name: userName,
-        notes: notes || '',
+      await apiFetch<{ success: true }>("/api/signups", {
+        method: "POST",
+        body: JSON.stringify({
+          category,
+          item,
+          slot,
+          user_email: userEmail,
+          user_name: userName,
+          notes: notes || "",
+        }),
       });
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to add signup');
-      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to add signup';
+      const message = err instanceof Error ? err.message : "Failed to add signup";
       setError(message);
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [callApi]);
+  }, [apiFetch]);
 
   const removeSignup = useCallback(async (
     category: string,
@@ -196,30 +153,27 @@ export function useGoogleSheets() {
     setLoading(true);
     setError(null);
     try {
-      const result = await callApi({
-        action: 'removeSignup',
-        category,
-        item,
-        slot: slot.toString(),
-        user_email: userEmail,
+      await apiFetch<{ success: true }>("/api/signups", {
+        method: "DELETE",
+        body: JSON.stringify({
+          category,
+          item,
+          slot,
+          user_email: userEmail,
+        }),
       });
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to remove signup');
-      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to remove signup';
+      const message = err instanceof Error ? err.message : "Failed to remove signup";
       setError(message);
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [callApi]);
+  }, [apiFetch]);
 
   return {
     loading,
     error,
-    getScriptUrl,
-    setScriptUrl,
     register,
     login,
     getSignups,
