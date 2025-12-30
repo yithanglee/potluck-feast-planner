@@ -27,16 +27,10 @@ function doPost(e) {
 }
 
 function handleRequest(e) {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json'
-  };
-
   try {
     const params = e.parameter;
     const action = params.action;
+    const callback = params.callback; // optional JSONP callback name
     
     let result;
     
@@ -60,14 +54,27 @@ function handleRequest(e) {
         result = { success: false, error: 'Unknown action' };
     }
     
+    // NOTE: Google Apps Script Web Apps often cannot be called via browser `fetch()` due to CORS/origin restrictions.
+    // To support browser clients reliably, we provide JSONP when `callback` is present.
+    const output = callback
+      ? `${callback}(${JSON.stringify(result)});`
+      : JSON.stringify(result);
+
     return ContentService
-      .createTextOutput(JSON.stringify(result))
-      .setMimeType(ContentService.MimeType.JSON);
+      .createTextOutput(output)
+      .setMimeType(callback ? ContentService.MimeType.JAVASCRIPT : ContentService.MimeType.JSON);
       
   } catch(error) {
+    const params = (e && e.parameter) ? e.parameter : {};
+    const callback = params.callback;
+    const payload = { success: false, error: error.toString() };
+    const output = callback
+      ? `${callback}(${JSON.stringify(payload)});`
+      : JSON.stringify(payload);
+
     return ContentService
-      .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+      .createTextOutput(output)
+      .setMimeType(callback ? ContentService.MimeType.JAVASCRIPT : ContentService.MimeType.JSON);
   }
 }
 

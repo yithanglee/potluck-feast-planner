@@ -17,12 +17,19 @@ export interface Signup {
 
 const SCRIPT_URL_KEY = 'potluck_script_url';
 
+// Default Google Apps Script Web App URL (can be overridden by setting localStorage `potluck_script_url`,
+// or via Vite env var `VITE_GOOGLE_APPS_SCRIPT_URL`).
+const DEFAULT_SCRIPT_URL =
+  (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_GOOGLE_APPS_SCRIPT_URL ||
+  'https://script.google.com/macros/s/AKfycbxUNKz3k9MbXJ7Rv7VjkaCzYooKt0ZunjUS2kfOGtw_ZwgKjm83zo9yfHQm2nVvezIl/exec';
+
 export function useGoogleSheets() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const getScriptUrl = useCallback(() => {
-    return localStorage.getItem(SCRIPT_URL_KEY);
+    const overridden = localStorage.getItem(SCRIPT_URL_KEY);
+    return (overridden && overridden.trim()) ? overridden.trim() : DEFAULT_SCRIPT_URL;
   }, []);
 
   const setScriptUrl = useCallback((url: string) => {
@@ -46,17 +53,43 @@ export function useGoogleSheets() {
     }
 
     const queryString = new URLSearchParams(params).toString();
-    const response = await fetch(`${scriptUrl}?${queryString}`, {
-      method: 'GET',
-      redirect: 'follow',
-    });
+    // Google Apps Script often blocks browser `fetch()` due to Origin/CORS restrictions.
+    // Use JSONP (script tag injection) instead. Requires `GOOGLE_APPS_SCRIPT.js` to support `callback=...`.
+    const callbackName = `__potluck_jsonp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const src = `${scriptUrl}?${queryString}&callback=${encodeURIComponent(callbackName)}`;
 
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error('Invalid response from server');
-    }
+    return await new Promise((resolve, reject) => {
+      const w = window as unknown as Record<string, unknown>;
+      let scriptEl: HTMLScriptElement | null = null;
+
+      const cleanup = () => {
+        if (scriptEl?.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+        scriptEl = null;
+        delete w[callbackName];
+      };
+
+      const timeoutId = window.setTimeout(() => {
+        cleanup();
+        reject(new Error('Request timed out'));
+      }, 15000);
+
+      w[callbackName] = (data: unknown) => {
+        window.clearTimeout(timeoutId);
+        cleanup();
+        resolve(data);
+      };
+
+      scriptEl = document.createElement('script');
+      scriptEl.async = true;
+      scriptEl.src = src;
+      scriptEl.onerror = () => {
+        window.clearTimeout(timeoutId);
+        cleanup();
+        reject(new Error('Failed to load Google Apps Script'));
+      };
+
+      document.head.appendChild(scriptEl);
+    });
   }, [getScriptUrl]);
 
   const register = useCallback(async (email: string, password: string, name: string): Promise<User> => {

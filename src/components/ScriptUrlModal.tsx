@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Settings } from "lucide-react";
@@ -11,6 +11,19 @@ interface ScriptUrlModalProps {
 export function ScriptUrlModal({ currentUrl, onSave }: ScriptUrlModalProps) {
   const [isOpen, setIsOpen] = useState(!currentUrl);
   const [url, setUrl] = useState(currentUrl || "");
+
+  // Keep internal state in sync when `currentUrl` is loaded after mount (e.g. from localStorage).
+  useEffect(() => {
+    if (currentUrl && currentUrl.trim()) {
+      setUrl(currentUrl);
+      setIsOpen(false);
+      return;
+    }
+
+    // If the saved URL is cleared, prompt again.
+    setUrl("");
+    setIsOpen(true);
+  }, [currentUrl]);
 
   const handleSave = () => {
     if (url.trim()) {

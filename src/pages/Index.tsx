@@ -6,7 +6,6 @@ import FoodSlot from "@/components/FoodSlot";
 import SignupModal from "@/components/SignupModal";
 import AuthForm from "@/components/AuthForm";
 import UserHeader from "@/components/UserHeader";
-import { ScriptUrlModal } from "@/components/ScriptUrlModal";
 import { useGoogleSheets, User, Signup } from "@/hooks/useGoogleSheets";
 
 // Food category configurations
@@ -58,12 +57,18 @@ const CATEGORIES = {
 };
 
 const Index = () => {
-  const sheets = useGoogleSheets();
+  const {
+    loading: sheetsLoading,
+    login,
+    register,
+    getSignups,
+    addSignup,
+    removeSignup,
+  } = useGoogleSheets();
   const [user, setUser] = useState<User | null>(null);
   const [signups, setSignups] = useState<Signup[]>([]);
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState("");
-  const [scriptUrl, setScriptUrl] = useState<string | null>(null);
   
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -71,45 +76,34 @@ const Index = () => {
   const [selectedItem, setSelectedItem] = useState("");
   const [selectedSlot, setSelectedSlot] = useState(0);
 
-  // Load script URL and user on mount
+  // Load user on mount
   useEffect(() => {
-    const url = sheets.getScriptUrl();
-    setScriptUrl(url);
-    
     const savedUser = localStorage.getItem("potluck_user");
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
   }, []);
 
-  // Fetch signups when script URL is set
+  // Fetch signups
   const fetchSignups = useCallback(async () => {
-    if (!scriptUrl) return;
     try {
-      const data = await sheets.getSignups();
+      const data = await getSignups();
       setSignups(data);
     } catch (err) {
       console.error("Failed to fetch signups:", err);
     }
-  }, [scriptUrl, sheets]);
+  }, [getSignups]);
 
   useEffect(() => {
     fetchSignups();
   }, [fetchSignups]);
-
-  const handleScriptUrlSave = (url: string) => {
-    sheets.setScriptUrl(url);
-    setScriptUrl(url);
-    toast.success("已连接到 Google Sheet！");
-    fetchSignups();
-  };
 
   const handleLogin = async (email: string, password: string) => {
     setLoading(true);
     setAuthError("");
     
     try {
-      const loggedInUser = await sheets.login(email, password);
+      const loggedInUser = await login(email, password);
       setUser(loggedInUser);
       localStorage.setItem("potluck_user", JSON.stringify(loggedInUser));
       toast.success(`欢迎回来，${loggedInUser.name}！`);
@@ -126,7 +120,7 @@ const Index = () => {
     setAuthError("");
     
     try {
-      const newUser = await sheets.register(email, password, name);
+      const newUser = await register(email, password, name);
       setUser(newUser);
       localStorage.setItem("potluck_user", JSON.stringify(newUser));
       toast.success(`欢迎加入，${name}！🎉`);
@@ -154,7 +148,7 @@ const Index = () => {
     if (!user) return;
     
     try {
-      await sheets.addSignup(
+      await addSignup(
         selectedCategory,
         selectedItem,
         selectedSlot,
@@ -171,7 +165,7 @@ const Index = () => {
 
   const handleRemoveSignup = async (signup: Signup) => {
     try {
-      await sheets.removeSignup(signup.category, signup.item, signup.slot, signup.userEmail);
+      await removeSignup(signup.category, signup.item, signup.slot, signup.userEmail);
       await fetchSignups();
       toast.success("已取消报名");
     } catch (err) {
@@ -223,13 +217,12 @@ const Index = () => {
             onLogin={handleLogin}
             onSignup={handleSignup}
             error={authError}
-            loading={loading || sheets.loading}
+            loading={loading || sheetsLoading}
           />
         </div>
         <footer className="text-center py-6 text-muted-foreground">
           感谢大家 💕💕💕
         </footer>
-        <ScriptUrlModal currentUrl={scriptUrl} onSave={handleScriptUrlSave} />
       </div>
     );
   }
@@ -350,8 +343,6 @@ const Index = () => {
         category={getCategoryName(selectedCategory, selectedItem)}
         descriptionPlaceholder="例：西瓜 5人份"
       />
-      
-      <ScriptUrlModal currentUrl={scriptUrl} onSave={handleScriptUrlSave} />
     </div>
   );
 };
