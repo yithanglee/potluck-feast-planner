@@ -21,7 +21,7 @@ const SCRIPT_URL_KEY = 'potluck_script_url';
 // or via Vite env var `VITE_GOOGLE_APPS_SCRIPT_URL`).
 const DEFAULT_SCRIPT_URL =
   (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_GOOGLE_APPS_SCRIPT_URL ||
-  'https://script.google.com/macros/s/AKfycbxUNKz3k9MbXJ7Rv7VjkaCzYooKt0ZunjUS2kfOGtw_ZwgKjm83zo9yfHQm2nVvezIl/exec';
+  'https://script.google.com/macros/s/AKfycbxErMSS_4DluXlMN8qqH-7wgS56KAnLtBMbfgRHxste2O1XGIhfD-r2UqYnws5UFyMe/exec';
 
 export function useGoogleSheets() {
   const [loading, setLoading] = useState(false);
