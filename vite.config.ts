@@ -5,6 +5,8 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  // GitHub Pages serves the site from `/<repo>/` in production.
+  base: mode === "production" ? "/potluck-feast-planner/" : "/",
   server: {
     host: "::",
     port: 8080,
