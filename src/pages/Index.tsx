@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import EventHeader from "@/components/EventHeader";
 import FoodCategory from "@/components/FoodCategory";
@@ -6,6 +6,8 @@ import FoodSlot from "@/components/FoodSlot";
 import SignupModal from "@/components/SignupModal";
 import AuthForm from "@/components/AuthForm";
 import UserHeader from "@/components/UserHeader";
+import { ScriptUrlModal } from "@/components/ScriptUrlModal";
+import { useGoogleSheets, User, Signup } from "@/hooks/useGoogleSheets";
 
 // Food category configurations
 const CATEGORIES = {
@@ -55,28 +57,13 @@ const CATEGORIES = {
   },
 };
 
-// Demo data types
-interface User {
-  id: string;
-  email: string;
-  name: string;
-}
-
-interface Signup {
-  id: string;
-  userId: string;
-  userName: string;
-  categoryId: string;
-  itemId: string;
-  slotNumber: number;
-  description: string;
-}
-
 const Index = () => {
+  const sheets = useGoogleSheets();
   const [user, setUser] = useState<User | null>(null);
   const [signups, setSignups] = useState<Signup[]>([]);
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [scriptUrl, setScriptUrl] = useState<string | null>(null);
   
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -84,48 +71,51 @@ const Index = () => {
   const [selectedItem, setSelectedItem] = useState("");
   const [selectedSlot, setSelectedSlot] = useState(0);
 
-  // Load from localStorage on mount
+  // Load script URL and user on mount
   useEffect(() => {
-    const savedUser = localStorage.getItem("potluck_user");
-    const savedSignups = localStorage.getItem("potluck_signups");
+    const url = sheets.getScriptUrl();
+    setScriptUrl(url);
     
+    const savedUser = localStorage.getItem("potluck_user");
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
-    if (savedSignups) {
-      setSignups(JSON.parse(savedSignups));
-    }
   }, []);
 
-  // Save signups to localStorage
+  // Fetch signups when script URL is set
+  const fetchSignups = useCallback(async () => {
+    if (!scriptUrl) return;
+    try {
+      const data = await sheets.getSignups();
+      setSignups(data);
+    } catch (err) {
+      console.error("Failed to fetch signups:", err);
+    }
+  }, [scriptUrl, sheets]);
+
   useEffect(() => {
-    localStorage.setItem("potluck_signups", JSON.stringify(signups));
-  }, [signups]);
+    fetchSignups();
+  }, [fetchSignups]);
+
+  const handleScriptUrlSave = (url: string) => {
+    sheets.setScriptUrl(url);
+    setScriptUrl(url);
+    toast.success("已连接到 Google Sheet！");
+    fetchSignups();
+  };
 
   const handleLogin = async (email: string, password: string) => {
     setLoading(true);
     setAuthError("");
     
     try {
-      // Simple hash for demo (in production, use proper auth)
-      const users = JSON.parse(localStorage.getItem("potluck_users") || "[]");
-      const existingUser = users.find((u: User & { passwordHash: string }) => u.email === email);
-      
-      if (!existingUser) {
-        setAuthError("用户不存在，请先注册");
-        return;
-      }
-      
-      const passwordHash = btoa(password);
-      if (existingUser.passwordHash !== passwordHash) {
-        setAuthError("密码错误");
-        return;
-      }
-      
-      const loggedInUser = { id: existingUser.id, email: existingUser.email, name: existingUser.name };
+      const loggedInUser = await sheets.login(email, password);
       setUser(loggedInUser);
       localStorage.setItem("potluck_user", JSON.stringify(loggedInUser));
       toast.success(`欢迎回来，${loggedInUser.name}！`);
+      fetchSignups();
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "登录失败");
     } finally {
       setLoading(false);
     }
@@ -136,28 +126,12 @@ const Index = () => {
     setAuthError("");
     
     try {
-      const users = JSON.parse(localStorage.getItem("potluck_users") || "[]");
-      const existingUser = users.find((u: User) => u.email === email);
-      
-      if (existingUser) {
-        setAuthError("该邮箱已注册");
-        return;
-      }
-      
-      const newUser = {
-        id: crypto.randomUUID(),
-        email,
-        name,
-        passwordHash: btoa(password),
-      };
-      
-      users.push(newUser);
-      localStorage.setItem("potluck_users", JSON.stringify(users));
-      
-      const loggedInUser = { id: newUser.id, email: newUser.email, name: newUser.name };
-      setUser(loggedInUser);
-      localStorage.setItem("potluck_user", JSON.stringify(loggedInUser));
+      const newUser = await sheets.register(email, password, name);
+      setUser(newUser);
+      localStorage.setItem("potluck_user", JSON.stringify(newUser));
       toast.success(`欢迎加入，${name}！🎉`);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "注册失败");
     } finally {
       setLoading(false);
     }
@@ -176,30 +150,37 @@ const Index = () => {
     setModalOpen(true);
   };
 
-  const handleFoodSignup = (description: string) => {
+  const handleFoodSignup = async (description: string) => {
     if (!user) return;
     
-    const newSignup: Signup = {
-      id: crypto.randomUUID(),
-      userId: user.id,
-      userName: user.name,
-      categoryId: selectedCategory,
-      itemId: selectedItem,
-      slotNumber: selectedSlot,
-      description,
-    };
-    
-    setSignups([...signups, newSignup]);
-    toast.success("报名成功！🎊");
+    try {
+      await sheets.addSignup(
+        selectedCategory,
+        selectedItem,
+        selectedSlot,
+        user.email,
+        user.name,
+        description
+      );
+      await fetchSignups();
+      toast.success("报名成功！🎊");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "报名失败");
+    }
   };
 
-  const handleRemoveSignup = (signupId: string) => {
-    setSignups(signups.filter((s) => s.id !== signupId));
-    toast.success("已取消报名");
+  const handleRemoveSignup = async (signup: Signup) => {
+    try {
+      await sheets.removeSignup(signup.category, signup.item, signup.slot, signup.userEmail);
+      await fetchSignups();
+      toast.success("已取消报名");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "取消失败");
+    }
   };
 
   const getSignupsForItem = (categoryId: string, itemId: string) => {
-    return signups.filter((s) => s.categoryId === categoryId && s.itemId === itemId);
+    return signups.filter((s) => s.category === categoryId && s.item === itemId);
   };
 
   const getCategoryName = (categoryId: string, itemId: string) => {
@@ -213,18 +194,18 @@ const Index = () => {
     const slots = [];
 
     for (let i = 1; i <= totalSlots; i++) {
-      const signup = itemSignups.find((s) => s.slotNumber === i);
-      const isCurrentUser = signup?.userId === user?.id;
+      const signup = itemSignups.find((s) => s.slot === i);
+      const isCurrentUser = signup?.userEmail === user?.email;
 
       slots.push(
         <FoodSlot
           key={`${itemId}-${i}`}
           slotNumber={i}
           userName={signup?.userName}
-          foodDescription={signup?.description}
+          foodDescription={signup?.notes}
           isCurrentUser={isCurrentUser}
           onClaim={() => openSignupModal(categoryId, itemId, i)}
-          onRemove={() => signup && handleRemoveSignup(signup.id)}
+          onRemove={() => signup && handleRemoveSignup(signup)}
           disabled={!user}
         />
       );
@@ -242,12 +223,13 @@ const Index = () => {
             onLogin={handleLogin}
             onSignup={handleSignup}
             error={authError}
-            loading={loading}
+            loading={loading || sheets.loading}
           />
         </div>
         <footer className="text-center py-6 text-muted-foreground">
           感谢大家 💕💕💕
         </footer>
+        <ScriptUrlModal currentUrl={scriptUrl} onSave={handleScriptUrlSave} />
       </div>
     );
   }
@@ -368,6 +350,8 @@ const Index = () => {
         category={getCategoryName(selectedCategory, selectedItem)}
         descriptionPlaceholder="例：西瓜 5人份"
       />
+      
+      <ScriptUrlModal currentUrl={scriptUrl} onSave={handleScriptUrlSave} />
     </div>
   );
 };
