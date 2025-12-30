@@ -13,7 +13,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      {/* HashRouter works reliably on GitHub Pages without server-side rewrite rules */}
+      {/* HashRouter works reliably on GitHub Pages without server-side rewrite rules used */}
       <HashRouter>
         <Routes>
           <Route path="/" element={<Index />} />
