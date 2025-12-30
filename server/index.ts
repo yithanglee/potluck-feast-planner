@@ -9,54 +9,46 @@ const app = express();
 
 const PORT = Number(process.env.PORT || 3001);
 const CORS_ORIGIN = process.env.CORS_ORIGIN || true; // true = reflect origin
+const ADMIN_TOKEN = (process.env.ADMIN_TOKEN || "").trim();
 
 app.use(cors({ origin: CORS_ORIGIN as any, credentials: false }));
 app.use(express.json({ limit: "256kb" }));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
-app.post("/api/register", (req, res) => {
-  const email = String(req.body?.email || "").trim().toLowerCase();
-  const passwordHash = String(req.body?.password_hash || "").trim();
-  const name = String(req.body?.name || "").trim();
+function requireAdmin(req: express.Request, res: express.Response): boolean {
+  if (!ADMIN_TOKEN) return true; // no token configured => allow
+  const headerToken = String(req.header("x-admin-token") || "").trim();
+  if (headerToken && headerToken === ADMIN_TOKEN) return true;
+  res.status(401).json({ success: false, error: "Admin token required" });
+  return false;
+}
 
-  if (!email || !passwordHash || !name) {
-    return res.status(400).json({ success: false, error: "Missing email/password_hash/name" });
+app.post("/api/login", (req, res) => {
+  const username = String(req.body?.username || "").trim();
+
+  if (!username) {
+    return res.status(400).json({ success: false, error: "Missing username" });
   }
 
   try {
     const createdAt = new Date().toISOString();
-    const stmt = db.prepare(
-      "INSERT INTO users (email, password_hash, name, created_at) VALUES (?, ?, ?, ?)"
-    );
-    stmt.run(email, passwordHash, name, createdAt);
-    return res.json({ success: true, user: { email, name } });
-  } catch (e: any) {
-    const msg = String(e?.message || e);
-    if (msg.includes("UNIQUE")) {
-      return res.status(409).json({ success: false, error: "Email already registered" });
-    }
-    return res.status(500).json({ success: false, error: "Registration failed" });
+
+    // Upsert: if username exists, keep it; otherwise create it.
+    db.prepare(
+      `INSERT INTO users (username, name, created_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(username) DO UPDATE SET name = excluded.name`
+    ).run(username, username, createdAt);
+
+    const row = db
+      .prepare("SELECT username, name FROM users WHERE username = ?")
+      .get(username) as { username: string; name: string };
+
+    return res.json({ success: true, user: row });
+  } catch {
+    return res.status(500).json({ success: false, error: "Login failed" });
   }
-});
-
-app.post("/api/login", (req, res) => {
-  const email = String(req.body?.email || "").trim().toLowerCase();
-  const passwordHash = String(req.body?.password_hash || "").trim();
-
-  if (!email || !passwordHash) {
-    return res.status(400).json({ success: false, error: "Missing email/password_hash" });
-  }
-
-  const row = db
-    .prepare("SELECT email, name FROM users WHERE email = ? AND password_hash = ?")
-    .get(email, passwordHash) as { email: string; name: string } | undefined;
-
-  if (!row) {
-    return res.status(401).json({ success: false, error: "Invalid email or password" });
-  }
-
-  return res.json({ success: true, user: row });
 });
 
 app.get("/api/signups", (_req, res) => {
@@ -74,7 +66,7 @@ app.post("/api/signups", (req, res) => {
   const category = String(req.body?.category || "").trim();
   const item = String(req.body?.item || "").trim();
   const slot = Number(req.body?.slot);
-  const userEmail = String(req.body?.user_email || "").trim().toLowerCase();
+  const userEmail = String(req.body?.user_email || "").trim();
   const userName = String(req.body?.user_name || "").trim();
   const notes = String(req.body?.notes || "").trim();
 
@@ -98,19 +90,65 @@ app.post("/api/signups", (req, res) => {
   }
 });
 
-app.delete("/api/signups", (req, res) => {
+app.put("/api/signups", (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
   const category = String(req.body?.category || "").trim();
   const item = String(req.body?.item || "").trim();
   const slot = Number(req.body?.slot);
-  const userEmail = String(req.body?.user_email || "").trim().toLowerCase();
+  const userName = req.body?.user_name !== undefined ? String(req.body?.user_name || "").trim() : undefined;
+  const notes = req.body?.notes !== undefined ? String(req.body?.notes || "").trim() : undefined;
 
-  if (!category || !item || !Number.isFinite(slot) || slot <= 0 || !userEmail) {
+  if (!category || !item || !Number.isFinite(slot) || slot <= 0) {
+    return res.status(400).json({ success: false, error: "Invalid update payload" });
+  }
+
+  if (userName === undefined && notes === undefined) {
+    return res.status(400).json({ success: false, error: "Nothing to update" });
+  }
+
+  const parts: string[] = [];
+  const values: any[] = [];
+  if (userName !== undefined) {
+    parts.push("user_name = ?");
+    values.push(userName);
+  }
+  if (notes !== undefined) {
+    parts.push("notes = ?");
+    values.push(notes);
+  }
+  values.push(category, item, slot);
+
+  const info = db
+    .prepare(`UPDATE signups SET ${parts.join(", ")} WHERE category = ? AND item = ? AND slot = ?`)
+    .run(...values);
+
+  if (info.changes === 0) {
+    return res.status(404).json({ success: false, error: "Signup not found" });
+  }
+
+  return res.json({ success: true });
+});
+
+app.delete("/api/signups", (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const category = String(req.body?.category || "").trim();
+  const item = String(req.body?.item || "").trim();
+  const slot = Number(req.body?.slot);
+  const userEmail = String(req.body?.user_email || "").trim();
+
+  if (!category || !item || !Number.isFinite(slot) || slot <= 0) {
     return res.status(400).json({ success: false, error: "Invalid remove payload" });
   }
 
-  const info = db
-    .prepare("DELETE FROM signups WHERE category = ? AND item = ? AND slot = ? AND user_email = ?")
-    .run(category, item, slot, userEmail);
+  const info = userEmail
+    ? db
+        .prepare("DELETE FROM signups WHERE category = ? AND item = ? AND slot = ? AND user_email = ?")
+        .run(category, item, slot, userEmail)
+    : db
+        .prepare("DELETE FROM signups WHERE category = ? AND item = ? AND slot = ?")
+        .run(category, item, slot);
 
   if (info.changes === 0) {
     return res.status(404).json({ success: false, error: "Signup not found" });

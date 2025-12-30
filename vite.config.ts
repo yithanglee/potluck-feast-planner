@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => ({
   // GitHub Pages serves the site from `/<repo>/` in production.
   base: mode === "production" ? "/potluck-feast-planner/" : "/",
   server: {
+    allowedHosts: ["sevenss.damienslab.com"],
     host: "::",
     port: 8080,
     proxy: {

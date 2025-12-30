@@ -1,5 +1,6 @@
 import { LogOut, User } from "lucide-react";
 import { Button } from "./ui/button";
+import { Link } from "react-router-dom";
 
 interface UserHeaderProps {
   userName: string;
@@ -20,10 +21,13 @@ const UserHeader = ({ userName, onLogout }: UserHeaderProps) => {
           </div>
         </div>
         
-        <Button variant="ghost" size="sm" onClick={onLogout} className="text-muted-foreground">
-          <LogOut className="w-4 h-4 mr-2" />
-          登出
-        </Button>
+        <div className="flex items-center gap-2">
+          
+          <Button variant="ghost" size="sm" onClick={onLogout} className="text-muted-foreground">
+            <LogOut className="w-4 h-4 mr-2" />
+            登出
+          </Button>
+        </div>
       </div>
     </div>
   );

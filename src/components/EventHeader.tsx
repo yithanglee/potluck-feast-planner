@@ -20,7 +20,7 @@ const EventHeader = () => {
       <div className="flex flex-wrap justify-center gap-4 text-sm md:text-base">
         <div className="flex items-center gap-2 bg-secondary/50 px-4 py-2 rounded-full">
           <CalendarDays className="w-5 h-5 text-primary" />
-          <span className="font-medium">19-10-2025 (周日)</span>
+          <span className="font-medium">11-01-2026 (周日)</span>
         </div>
         
         <div className="flex items-center gap-2 bg-secondary/50 px-4 py-2 rounded-full">

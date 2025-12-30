@@ -4,7 +4,7 @@
  * SETUP INSTRUCTIONS:
  * 1. Create a new Google Sheet
  * 2. Create two sheets (tabs) named exactly: "Users" and "Signups"
- * 3. In "Users" sheet, add headers in row 1: email | password_hash | name | created_at
+ * 3. In "Users" sheet, add headers in row 1: username | name | created_at
  * 4. In "Signups" sheet, add headers in row 1: category | item | slot | user_email | user_name | notes | timestamp
  * 5. Go to Extensions > Apps Script
  * 6. Delete any existing code and paste this entire file
@@ -35,11 +35,8 @@ function handleRequest(e) {
     let result;
     
     switch(action) {
-      case 'register':
-        result = registerUser(params.email, params.password_hash, params.name);
-        break;
       case 'login':
-        result = loginUser(params.email, params.password_hash);
+        result = loginUser(params.username);
         break;
       case 'getSignups':
         result = getAllSignups();
@@ -78,34 +75,22 @@ function handleRequest(e) {
   }
 }
 
-function registerUser(email, passwordHash, name) {
+function loginUser(username) {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Users');
   const data = sheet.getDataRange().getValues();
   
-  // Check if email already exists (skip header row)
+  // If found → return user; otherwise → append row (upsert behavior).
   for (let i = 1; i < data.length; i++) {
-    if (data[i][0].toLowerCase() === email.toLowerCase()) {
-      return { success: false, error: 'Email already registered' };
+    if (String(data[i][0]).toLowerCase() === String(username).toLowerCase()) {
+      return { success: true, user: { username: data[i][0], name: data[i][1] } };
     }
   }
-  
-  // Add new user
-  sheet.appendRow([email.toLowerCase(), passwordHash, name, new Date().toISOString()]);
-  
-  return { success: true, user: { email: email.toLowerCase(), name: name } };
-}
 
-function loginUser(email, passwordHash) {
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Users');
-  const data = sheet.getDataRange().getValues();
-  
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0].toLowerCase() === email.toLowerCase() && data[i][1] === passwordHash) {
-      return { success: true, user: { email: data[i][0], name: data[i][2] } };
-    }
-  }
-  
-  return { success: false, error: 'Invalid email or password' };
+  const normalized = String(username || '').trim();
+  if (!normalized) return { success: false, error: 'Missing username' };
+
+  sheet.appendRow([normalized, normalized, new Date().toISOString()]);
+  return { success: true, user: { username: normalized, name: normalized } };
 }
 
 function getAllSignups() {

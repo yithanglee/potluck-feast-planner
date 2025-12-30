@@ -60,7 +60,6 @@ const Index = () => {
   const {
     loading: sheetsLoading,
     login,
-    register,
     getSignups,
     addSignup,
     removeSignup,
@@ -98,34 +97,18 @@ const Index = () => {
     fetchSignups();
   }, [fetchSignups]);
 
-  const handleLogin = async (email: string, password: string) => {
+  const handleLogin = async (username: string) => {
     setLoading(true);
     setAuthError("");
     
     try {
-      const loggedInUser = await login(email, password);
+      const loggedInUser = await login(username);
       setUser(loggedInUser);
       localStorage.setItem("potluck_user", JSON.stringify(loggedInUser));
       toast.success(`欢迎回来，${loggedInUser.name}！`);
       fetchSignups();
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "登录失败");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSignup = async (email: string, password: string, name: string) => {
-    setLoading(true);
-    setAuthError("");
-    
-    try {
-      const newUser = await register(email, password, name);
-      setUser(newUser);
-      localStorage.setItem("potluck_user", JSON.stringify(newUser));
-      toast.success(`欢迎加入，${name}！🎉`);
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "注册失败");
     } finally {
       setLoading(false);
     }
@@ -152,7 +135,7 @@ const Index = () => {
         selectedCategory,
         selectedItem,
         selectedSlot,
-        user.email,
+        user.username,
         user.name,
         description
       );
@@ -189,7 +172,7 @@ const Index = () => {
 
     for (let i = 1; i <= totalSlots; i++) {
       const signup = itemSignups.find((s) => s.slot === i);
-      const isCurrentUser = signup?.userEmail === user?.email;
+      const isCurrentUser = signup?.userEmail === user?.username;
 
       slots.push(
         <FoodSlot
@@ -215,7 +198,6 @@ const Index = () => {
         <div className="flex-1 flex items-center justify-center pb-12">
           <AuthForm
             onLogin={handleLogin}
-            onSignup={handleSignup}
             error={authError}
             loading={loading || sheetsLoading}
           />

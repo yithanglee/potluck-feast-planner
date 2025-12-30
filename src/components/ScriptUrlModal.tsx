@@ -56,7 +56,7 @@ export function ScriptUrlModal({ currentUrl, onSave }: ScriptUrlModalProps) {
           <ol className="list-decimal list-inside space-y-2">
             <li>Create a new Google Sheet</li>
             <li>Create two sheets named: <code className="bg-muted px-1 rounded">Users</code> and <code className="bg-muted px-1 rounded">Signups</code></li>
-            <li>In <strong>Users</strong>: add headers → <code className="bg-muted px-1 rounded">email | password_hash | name | created_at</code></li>
+            <li>In <strong>Users</strong>: add headers → <code className="bg-muted px-1 rounded">username | name | created_at</code></li>
             <li>In <strong>Signups</strong>: add headers → <code className="bg-muted px-1 rounded">category | item | slot | user_email | user_name | notes | timestamp</code></li>
             <li>Go to <strong>Extensions → Apps Script</strong></li>
             <li>Paste the code from <code className="bg-muted px-1 rounded">GOOGLE_APPS_SCRIPT.js</code></li>

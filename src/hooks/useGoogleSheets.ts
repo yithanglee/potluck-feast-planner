@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 
 export interface User {
-  email: string;
+  username: string;
   name: string;
 }
 
@@ -17,26 +17,19 @@ export interface Signup {
 
 // Backend base: in dev, Vite proxies `/api/*` to http://localhost:3001 (see vite.config.ts).
 const API_BASE = "";
+const ADMIN_TOKEN_HEADER = "x-admin-token";
 
 export function useGoogleSheets() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const simpleHash = (str: string): string => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash).toString(16);
-  };
+  const [adminToken, setAdminToken] = useState("");
 
   const apiFetch = useCallback(async <T,>(path: string, init?: RequestInit): Promise<T> => {
     const res = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",
+        ...(adminToken ? { [ADMIN_TOKEN_HEADER]: adminToken } : {}),
         ...(init?.headers || {}),
       },
     });
@@ -53,39 +46,16 @@ export function useGoogleSheets() {
       throw new Error(data?.error || `Request failed (${res.status})`);
     }
     return data as T;
-  }, []);
+  }, [adminToken]);
 
-  const register = useCallback(async (email: string, password: string, name: string): Promise<User> => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await apiFetch<{ success: true; user: User }>("/api/register", {
-        method: "POST",
-        body: JSON.stringify({
-          email: email.toLowerCase(),
-          password_hash: simpleHash(password),
-          name,
-        }),
-      });
-      return result.user;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Registration failed";
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [apiFetch]);
-
-  const login = useCallback(async (email: string, password: string): Promise<User> => {
+  const login = useCallback(async (username: string): Promise<User> => {
     setLoading(true);
     setError(null);
     try {
       const result = await apiFetch<{ success: true; user: User }>("/api/login", {
         method: "POST",
         body: JSON.stringify({
-          email: email.toLowerCase(),
-          password_hash: simpleHash(password),
+          username: username.trim(),
         }),
       });
       return result.user;
@@ -171,13 +141,41 @@ export function useGoogleSheets() {
     }
   }, [apiFetch]);
 
+  const updateSignup = useCallback(async (
+    category: string,
+    item: string,
+    slot: number,
+    patch: { user_name?: string; notes?: string }
+  ): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    try {
+      await apiFetch<{ success: true }>("/api/signups", {
+        method: "PUT",
+        body: JSON.stringify({
+          category,
+          item,
+          slot,
+          ...patch,
+        }),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update signup";
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+
   return {
     loading,
     error,
-    register,
+    setAdminToken,
     login,
     getSignups,
     addSignup,
     removeSignup,
+    updateSignup,
   };
 }
