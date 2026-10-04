@@ -4,9 +4,9 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
-  // GitHub Pages serves the site from `/<repo>/` in production.
-  base: mode === "production" ? "/potluck-feast-planner/" : "/",
+export default defineConfig({
+  // Cloudflare Pages serves the site from root
+  base: "/",
   server: {
     allowedHosts: ["sevenss.damienslab.com"],
     host: "::",
@@ -19,10 +19,10 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [react(), componentTagger()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
   },
-}));
+});
