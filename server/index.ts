@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { initDb } from "./init";
-import { db } from "./db";
+import { pool } from "./db";
 
 initDb();
 
@@ -24,7 +24,7 @@ function requireAdmin(req: express.Request, res: express.Response): boolean {
   return false;
 }
 
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
   const username = String(req.body?.username || "").trim();
 
   if (!username) {
@@ -35,15 +35,18 @@ app.post("/api/login", (req, res) => {
     const createdAt = new Date().toISOString();
 
     // Upsert: if username exists, keep it; otherwise create it.
-    db.prepare(
+    await pool.query(
       `INSERT INTO users (username, name, created_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(username) DO UPDATE SET name = excluded.name`
-    ).run(username, username, createdAt);
+       VALUES ($1, $2, $3)
+       ON CONFLICT (username) DO UPDATE SET name = EXCLUDED.name`,
+      [username, username, createdAt]
+    );
 
-    const row = db
-      .prepare("SELECT username, name FROM users WHERE username = ?")
-      .get(username) as { username: string; name: string };
+    const { rows } = await pool.query<{ username: string; name: string }>(
+      `SELECT username, name FROM users WHERE username = $1`,
+      [username]
+    );
+    const row = rows[0];
 
     return res.json({ success: true, user: row });
   } catch {
@@ -51,18 +54,23 @@ app.post("/api/login", (req, res) => {
   }
 });
 
-app.get("/api/signups", (_req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT category, item, slot, user_email as userEmail, user_name as userName, notes, timestamp
-       FROM signups
-       ORDER BY timestamp DESC`
-    )
-    .all();
+app.get("/api/signups", async (_req, res) => {
+  const { rows } = await pool.query(
+    `SELECT
+       category,
+       item,
+       slot,
+       user_email AS "userEmail",
+       user_name AS "userName",
+       notes,
+       timestamp
+     FROM signups
+     ORDER BY timestamp DESC`
+  );
   return res.json({ success: true, signups: rows });
 });
 
-app.post("/api/signups", (req, res) => {
+app.post("/api/signups", async (req, res) => {
   const category = String(req.body?.category || "").trim();
   const item = String(req.body?.item || "").trim();
   const slot = Number(req.body?.slot);
@@ -76,21 +84,22 @@ app.post("/api/signups", (req, res) => {
 
   try {
     const timestamp = new Date().toISOString();
-    db.prepare(
+    await pool.query(
       `INSERT INTO signups (category, item, slot, user_email, user_name, notes, timestamp)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(category, item, slot, userEmail, userName, notes, timestamp);
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [category, item, slot, userEmail, userName, notes, timestamp]
+    );
     return res.json({ success: true });
   } catch (e: any) {
-    const msg = String(e?.message || e);
-    if (msg.includes("UNIQUE")) {
+    // Postgres unique violation
+    if (e && (e.code === "23505" || String(e?.message || "").toLowerCase().includes("duplicate key"))) {
       return res.status(409).json({ success: false, error: "Slot already taken" });
     }
     return res.status(500).json({ success: false, error: "Failed to add signup" });
   }
 });
 
-app.put("/api/signups", (req, res) => {
+app.put("/api/signups", async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
   const category = String(req.body?.category || "").trim();
@@ -110,27 +119,31 @@ app.put("/api/signups", (req, res) => {
   const parts: string[] = [];
   const values: any[] = [];
   if (userName !== undefined) {
-    parts.push("user_name = ?");
+    parts.push(`user_name = $${values.length + 1}`);
     values.push(userName);
   }
   if (notes !== undefined) {
-    parts.push("notes = ?");
+    parts.push(`notes = $${values.length + 1}`);
     values.push(notes);
   }
   values.push(category, item, slot);
 
-  const info = db
-    .prepare(`UPDATE signups SET ${parts.join(", ")} WHERE category = ? AND item = ? AND slot = ?`)
-    .run(...values);
+  const whereStartIndex = values.length - 3 + 1;
+  const sql = `UPDATE signups
+               SET ${parts.join(", ")}
+               WHERE category = $${whereStartIndex}
+                 AND item = $${whereStartIndex + 1}
+                 AND slot = $${whereStartIndex + 2}`;
+  const info = await pool.query(sql, values);
 
-  if (info.changes === 0) {
+  if (info.rowCount === 0) {
     return res.status(404).json({ success: false, error: "Signup not found" });
   }
 
   return res.json({ success: true });
 });
 
-app.delete("/api/signups", (req, res) => {
+app.delete("/api/signups", async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
   const category = String(req.body?.category || "").trim();
@@ -143,14 +156,17 @@ app.delete("/api/signups", (req, res) => {
   }
 
   const info = userEmail
-    ? db
-        .prepare("DELETE FROM signups WHERE category = ? AND item = ? AND slot = ? AND user_email = ?")
-        .run(category, item, slot, userEmail)
-    : db
-        .prepare("DELETE FROM signups WHERE category = ? AND item = ? AND slot = ?")
-        .run(category, item, slot);
+    ? await pool.query(
+        "DELETE FROM signups WHERE category = $1 AND item = $2 AND slot = $3 AND user_email = $4",
+        [category, item, slot, userEmail]
+      )
+    : await pool.query("DELETE FROM signups WHERE category = $1 AND item = $2 AND slot = $3", [
+        category,
+        item,
+        slot,
+      ]);
 
-  if (info.changes === 0) {
+  if (info.rowCount === 0) {
     return res.status(404).json({ success: false, error: "Signup not found" });
   }
 
