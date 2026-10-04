@@ -3,7 +3,7 @@ import cors from "cors";
 import { initDb } from "./init";
 import { pool } from "./db";
 
-initDb();
+await initDb();
 
 const app = express();
 
