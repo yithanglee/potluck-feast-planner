@@ -1,18 +1,33 @@
-import Database from "better-sqlite3";
-import fs from "fs";
-import path from "path";
+import { Pool } from "pg";
 
-export const DB_PATH =
-  process.env.DB_PATH ||
-  path.resolve(process.cwd(), "server", "data", "potluck.sqlite");
+const DATABASE_URL = (process.env.DATABASE_URL || "").trim();
 
-// Ensure parent directory exists before opening SQLite file.
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+if (!DATABASE_URL) {
+  // Fail fast and clearly if the connection string is not provided
+  throw new Error(
+    "DATABASE_URL is required. Set it to your Neon Postgres connection string."
+  );
+}
 
-export const db = new Database(DB_PATH);
+let ssl: any = undefined;
+try {
+  const host = new URL(DATABASE_URL).hostname;
+  // Neon requires SSL; auto-enable when the host looks like Neon
+  if (host.endsWith("neon.tech")) {
+    ssl = { rejectUnauthorized: false };
+  }
+} catch {
+  // ignore URL parse errors; let pg handle invalid URLs later
+}
 
-// Performance + safety defaults
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+export const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl,
+});
+
+export async function query<T = any>(text: string, params: any[] = []) {
+  const result = await pool.query<T>(text, params);
+  return result;
+}
 
 

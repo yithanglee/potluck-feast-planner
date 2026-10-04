@@ -1,17 +1,27 @@
-import { pool } from "./db";
+import { neon } from "@neondatabase/serverless";
 
-export function initDb() {
-  // Create tables if they do not exist (Postgres)
-  // - users: username unique
-  // - signups: unique(category, item, slot)
-  const ddl = `
+export type EnvWithDb = { DATABASE_URL?: string };
+
+export function getSql(env: EnvWithDb) {
+  const url = (env.DATABASE_URL || "").trim();
+  if (!url) {
+    throw new Error("DATABASE_URL is required (Cloudflare Pages env var).");
+  }
+  return neon(url);
+}
+
+export async function ensureSchema(sql: ReturnType<typeof getSql>) {
+  // Run DDL idempotently. Separate statements to avoid multi-statement limitations.
+  await sql/* sql */`
     CREATE TABLE IF NOT EXISTS users (
       id BIGSERIAL PRIMARY KEY,
       username TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL
-    );
+    )
+  `;
 
+  await sql/* sql */`
     CREATE TABLE IF NOT EXISTS signups (
       id BIGSERIAL PRIMARY KEY,
       category TEXT NOT NULL,
@@ -22,11 +32,7 @@ export function initDb() {
       notes TEXT NOT NULL DEFAULT '',
       timestamp TIMESTAMPTZ NOT NULL,
       CONSTRAINT signups_unique_slot UNIQUE (category, item, slot)
-    );
+    )
   `;
-
-  // Run as a single multi-statement query
-  return pool.query(ddl);
 }
-
 
