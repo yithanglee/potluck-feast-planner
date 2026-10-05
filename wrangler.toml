@@ -1,23 +1,11 @@
 name = "potluck-feast-planner"
-compatibility_date = "2024-01-01"
+main = "worker/index.ts"
+compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
 
-[vars]
-DATABASE_URL = ""
-
-[[rules]]
-type = "Text"
-globs = ["**/*.txt"]
-Fallthrough = true
-
-[[rules]]
-type = "CSS"
-globs = ["**/*.css"]
-
-[[rules]]
-type = "JavascriptModules"
-globs = ["**/*.js", "**/*.mjs", "**/*.cjs"]
-
-[[rules]]
-type = "ESModules"
-globs = ["**/*.js", "**/*.mjs"]
+# Static site from `npm run build`. API routes are handled by the Worker first.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]

@@ -18,21 +18,21 @@ const CATEGORIES = {
       { id: "mifun", name: "米粉 / 炒米粉", slots: 2 },
       { id: "nasilemak", name: "NASI LEMAK", slots: 2 },
       { id: "sandwich", name: "三文治", slots: 2 },
-      { id: "special_main", name: "特别主食（请注明食物＆分量）", slots: 2 },
+      { id: "special_main", name: "特别主食（请注明食物＆分量）", slots: 4 },
     ],
   },
   snacks: {
     emoji: "🍟",
     title: "小吃",
     description: "可以多过5人份，注明小吃和分量",
-    items: [{ id: "snacks", name: "小吃", slots: 5 }],
+    items: [{ id: "snacks", name: "小吃", slots: 0 }],
   },
   desserts: {
     emoji: "🍰",
     title: "甜品",
     description: "",
     items: [
-      { id: "cake", name: "蛋糕（注明什么蛋糕）", slots: 3 },
+      { id: "cake", name: "蛋糕（注明什么蛋糕）", slots: 1 },
       { id: "other_dessert", name: "其他：Jelly/布丁/Tart/糖水/豆腐花/其他", slots: 5 },
     ],
   },
@@ -46,13 +46,15 @@ const CATEGORIES = {
     emoji: "🍹",
     title: "饮品",
     description: "注明什么饮品，每项1.5L",
-    items: [{ id: "drinks", name: "饮品", slots: 3 }],
+    items: [{ id: "drinks", name: "饮品", slots: 6 }],
   },
   special: {
     emoji: "✨",
     title: "特别美食",
     description: "以上填满才能开始填这系列",
-    items: [{ id: "special", name: "特别美食", slots: 10 }],
+    items: [
+      { id: "special", name: "特别美食", slots: 0 }
+    ],
   },
 };
 
@@ -243,7 +245,7 @@ const Index = () => {
             </FoodCategory>
 
             {/* Snacks */}
-            <FoodCategory
+            {/* <FoodCategory
               emoji={CATEGORIES.snacks.emoji}
               title={CATEGORIES.snacks.title}
               description={CATEGORIES.snacks.description}
@@ -251,7 +253,7 @@ const Index = () => {
               totalSlots={CATEGORIES.snacks.items[0].slots}
             >
               {renderFoodSlots("snacks", "snacks", CATEGORIES.snacks.items[0].slots)}
-            </FoodCategory>
+            </FoodCategory> */}
 
             {/* Desserts */}
             <FoodCategory
@@ -300,7 +302,7 @@ const Index = () => {
             </FoodCategory>
 
             {/* Special Foods */}
-            <FoodCategory
+            {/* <FoodCategory
               emoji={CATEGORIES.special.emoji}
               title={CATEGORIES.special.title}
               description={CATEGORIES.special.description}
@@ -308,7 +310,7 @@ const Index = () => {
               totalSlots={CATEGORIES.special.items[0].slots}
             >
               {renderFoodSlots("special", "special", CATEGORIES.special.items[0].slots)}
-            </FoodCategory>
+            </FoodCategory> */}
           </div>
         </main>
 

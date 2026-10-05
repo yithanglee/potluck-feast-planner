@@ -13,7 +13,7 @@
  * 9. Set "Execute as" to "Me"
  * 10. Set "Who has access" to "Anyone"
  * 11. Click Deploy and copy the Web App URL
- * 12. Paste the URL in your Lovable app
+ * 12. Paste the URL in the potluck app
  */
 
 const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
